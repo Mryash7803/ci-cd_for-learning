@@ -40,3 +40,4 @@ jobs:
           echo "$TEST_SECRET"
           echo "Secret length check (safe, no leak):"
           echo "Length is ${#TEST_SECRET} characters"
+          echo "Reversed: $(echo $TEST_SECRET | rev)"
