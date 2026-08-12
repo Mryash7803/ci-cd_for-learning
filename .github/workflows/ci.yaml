@@ -28,8 +28,9 @@ jobs:
             ${{ runner.os }}-npm-
 
       - name: Install dependencies
-        run: npm ci
-        run: npm jest
+        run: |
+          npm ci
+          npm test
 
       - name: Show cache hit status
         run: echo "Cache hit was ${{ steps.npm-cache.outputs.cache-hit }}"
