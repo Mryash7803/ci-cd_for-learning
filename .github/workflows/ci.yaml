@@ -30,6 +30,7 @@ jobs:
       - name: Install dependencies
         run: |
           npm ci
+          npm eslint .
           npm test
 
       - name: Show cache hit status
