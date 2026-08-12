@@ -29,6 +29,7 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        run: npm jest
 
       - name: Show cache hit status
         run: echo "Cache hit was ${{ steps.npm-cache.outputs.cache-hit }}"
