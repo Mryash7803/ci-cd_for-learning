@@ -32,3 +32,11 @@ jobs:
 
       - name: Show cache hit status
         run: echo "Cache hit was ${{ steps.npm-cache.outputs.cache-hit }}"
+      - name: Test secret masking
+        env:
+          TEST_SECRET: ${{ secrets.TEST_SECRET }}
+        run: |
+          echo "Trying to print the secret directly:"
+          echo "$TEST_SECRET"
+          echo "Secret length check (safe, no leak):"
+          echo "Length is ${#TEST_SECRET} characters"
