@@ -1,0 +1,14 @@
+{
+  "name": "ci-cd_practice",
+  "version": "1.0.0",
+  "description": "Practice repo for learning CI/CD caching and pipelines",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"No tests yet - just checking install works\" && exit 0"
+  },
+  "dependencies": {
+    "lodash": "^4.17.21",
+    "express": "^4.19.2"
+  },
+  "license": "MIT"
+}
