@@ -4,11 +4,14 @@
   "description": "Practice repo for learning CI/CD caching and pipelines",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"No tests yet - just checking install works\" && exit 0"
+    "test": "jest"
   },
   "dependencies": {
-    "lodash": "^4.17.21",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "lodash": "^4.17.21"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "jest": "^30.4.2"
+  }
 }
