@@ -1,5 +1,3 @@
-name: CI
-
 on:
   push:
     branches: [master]
@@ -7,7 +5,7 @@ on:
     branches: [master]
 
 jobs:
-  build:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -18,10 +16,22 @@ jobs:
         with:
           dockerfile: Dockerfile
 
-      - name: YAML Lint
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies and run ESLint
         run: |
-          pip install yamllint --break-system-packages
-          yamllint k8s/
+          npm ci
+          npx eslint .
+
+  build:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -40,7 +50,6 @@ jobs:
       - name: Install dependencies
         run: |
           npm ci
-          npx eslint .
           npm test -- --json --outputFile=test-results.json
 
       - name: Upload test results
@@ -52,6 +61,7 @@ jobs:
 
       - name: Show cache hit status
         run: echo "Cache hit was ${{ steps.npm-cache.outputs.cache-hit }}"
+
       - name: Test secret masking
         env:
           TEST_SECRET: ${{ secrets.TEST_SECRET }}
@@ -60,4 +70,3 @@ jobs:
           echo "$TEST_SECRET"
           echo "Secret length check (safe, no leak):"
           echo "Length is ${#TEST_SECRET} characters"
-          echo "Reversed: $(echo $TEST_SECRET | rev)"
