@@ -18,7 +18,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
+      - name: Debug secret presence
+        run: |
+            if [ -z "${{ secrets.AWS_ROLE_ARN }}" ]; then
+              echo "AWS_ROLE_ARN is EMPTY"
+            else
+              echo "AWS_ROLE_ARN is set (length: ${#SECRET})"
+            fi
+        env:
+          SECRET: ${{ secrets.AWS_ROLE_ARN }}
       - name: Run Hadolint
         uses: hadolint/hadolint-action@v3.1.0
         with:
