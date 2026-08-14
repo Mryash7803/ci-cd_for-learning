@@ -116,8 +116,28 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master'
     steps:
-      - name: Show triggering commit info
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+
+      - name: Resolve image reference
+        id: image
         run: |
-          echo "Triggered by CI run"
-          echo "Commit SHA: ${{ github.sha }}"
-          echo "Branch: ${{ github.ref }}"
+          IMAGE_URI="469072181105.dkr.ecr.ap-south-1.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
+          echo "uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+          echo "Deploying: $IMAGE_URI"
+
+      - name: Deploy new version
+        run: |
+          echo "### PLACEHOLDER: target-specific deploy command goes here ###"
+          echo "Would deploy image: ${{ steps.image.outputs.uri }}"
+          # e.g. kubectl set image ...
+          # e.g. aws ecs update-service ...
+
+      - name: Verify rollout succeeded
+        run: |
+          echo "### PLACEHOLDER: target-specific health/rollout check goes here ###"
+          # e.g. kubectl rollout status ...
+          # e.g. curl -f https://health-endpoint || exit 1
