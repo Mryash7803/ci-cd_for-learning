@@ -24,7 +24,7 @@ jobs:
 
       # Step 1: Scan and print human-readable table (fails if CVEs found)
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.29.0
         with:
           image-ref: 'nginx:1.27' # Replace with your image name or ${{ steps.image.outputs.uri }}
           severity: HIGH,CRITICAL
