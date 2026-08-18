@@ -1,0 +1,112 @@
+name: Kyverno and Cosign Security Checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  policy-and-signature-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Kyverno CLI
+        run: |
+          curl -sSfL https://github.com/kyverno/kyverno/releases/latest/download/kyverno-cli_linux_x86_64.tar.gz -o kyverno.tar.gz
+          tar -xzf kyverno.tar.gz
+          sudo mv kyverno /usr/local/bin/kyverno
+          kyverno version
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.7.0
+
+      - name: Create three Kyverno policies
+        shell: bash
+        run: |
+          mkdir -p security
+          cat > security/policies.yaml <<'EOF'
+          apiVersion: kyverno.io/v1
+          kind: ClusterPolicy
+          metadata:
+            name: disallow-privileged
+          spec:
+            validationFailureAction: Enforce
+            rules:
+              - name: privileged-containers
+                match:
+                  any:
+                    - resources:
+                        kinds: [Pod]
+                validate:
+                  message: "Privileged containers are not allowed."
+                  pattern:
+                    spec:
+                      =(securityContext):
+                        =(privileged): "false"
+          ---
+          apiVersion: kyverno.io/v1
+          kind: ClusterPolicy
+          metadata:
+            name: require-owner-label
+          spec:
+            validationFailureAction: Enforce
+            rules:
+              - name: owner-label
+                match:
+                  any:
+                    - resources:
+                        kinds: [Pod]
+                validate:
+                  message: "The owner label is required."
+                  pattern:
+                    metadata:
+                      labels:
+                        owner: "?*"
+          ---
+          apiVersion: kyverno.io/v1
+          kind: ClusterPolicy
+          metadata:
+            name: disallow-image-latest
+          spec:
+            validationFailureAction: Enforce
+            rules:
+              - name: image-tag
+                match:
+                  any:
+                    - resources:
+                        kinds: [Pod]
+                validate:
+                  message: "Images must not use the latest tag."
+                  foreach:
+                    - list: "request.object.spec.containers[]"
+                      pattern:
+                        image: "!*:latest"
+          EOF
+
+          cat > security/pod.yaml <<'EOF'
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: secure-example
+            labels:
+              owner: platform
+          spec:
+            containers:
+              - name: app
+                image: nginx:1.27
+                securityContext:
+                  privileged: false
+          EOF
+
+      - name: Apply all Kyverno policies
+        run: kyverno apply security/policies.yaml --resource security/pod.yaml
+
+      - name: Sign and verify an attestation with Cosign
+        env:
+          COSIGN_YES: "true"
+        run: |
+          printf 'Kyverno policy checks passed for commit %s\n' "$GITHUB_SHA" > security-result.txt
+          cosign sign-blob --yes --bundle security-result.bundle security-result.txt
+          cosign verify-blob --bundle security-result.bundle security-result.txt
