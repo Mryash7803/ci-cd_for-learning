@@ -15,6 +15,14 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Cache Trivy Vulnerability Database
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-cache-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            trivy-cache-${{ runner.os }}-
+
       - name: Install Trivy CLI
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
@@ -22,12 +30,23 @@ jobs:
 
       - name: Trivy Vulnerability Scan (Table Output)
         run: |
-          trivy image --severity HIGH,CRITICAL --ignore-unfixed --format table nginx:1.27
+          trivy image \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --format table \
+            nginx:1.27
 
       - name: Generate SARIF Report
         if: always()
         run: |
-          trivy image --severity HIGH,CRITICAL --ignore-unfixed --format sarif --output trivy-results.sarif nginx:1.27
+          trivy image \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --format sarif \
+            --output trivy-results.sarif \
+            nginx:1.27
 
       - name: Upload SARIF to GitHub Security Tab
         if: always()
