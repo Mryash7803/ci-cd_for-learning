@@ -21,7 +21,7 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3.7.0
 
-      - name: Create Kyverno policies and test resource
+      - name: Create Kyverno policies and test resources
         shell: bash
         run: |
           mkdir -p security
@@ -85,11 +85,11 @@ jobs:
                         image: "!*:latest"
           EOF
 
-          cat > security/pod.yaml <<'EOF'
+          cat > security/resources.yaml <<'EOF'
           apiVersion: v1
           kind: Pod
           metadata:
-            name: secure-example
+            name: secure-pod
             labels:
               owner: platform
             namespace: default
@@ -99,11 +99,132 @@ jobs:
                 image: nginx:1.27
                 securityContext:
                   privileged: false
+          ---
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: secure-deployment
+            labels:
+              owner: platform
+            namespace: default
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: secure-deploy
+              labels:
+                owner: platform
+            template:
+              metadata:
+                labels:
+                  app: secure-deploy
+                  owner: platform
+              spec:
+                containers:
+                  - name: app
+                    image: nginx:1.27
+                    securityContext:
+                      privileged: false
+          ---
+          apiVersion: apps/v1
+          kind: StatefulSet
+          metadata:
+            name: secure-statefulset
+            labels:
+              owner: platform
+            namespace: default
+          spec:
+            serviceName: "secure-service"
+            replicas: 1
+            selector:
+              matchLabels:
+                app: secure-sts
+              labels:
+                owner: platform
+            template:
+              metadata:
+                labels:
+                  app: secure-sts
+                  owner: platform
+              spec:
+                containers:
+                  - name: app
+                    image: nginx:1.27
+                    securityContext:
+                      privileged: false
+          ---
+          apiVersion: apps/v1
+          kind: DaemonSet
+          metadata:
+            name: secure-daemonset
+            labels:
+              owner: platform
+            namespace: default
+          spec:
+            selector:
+              matchLabels:
+                app: secure-ds
+              labels:
+                owner: platform
+            template:
+              metadata:
+                labels:
+                  app: secure-ds
+                  owner: platform
+              spec:
+                containers:
+                  - name: app
+                    image: nginx:1.27
+                    securityContext:
+                      privileged: false
+          ---
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: secure-job
+            labels:
+              owner: platform
+            namespace: default
+          spec:
+            template:
+              metadata:
+                labels:
+                  owner: platform
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: app
+                    image: nginx:1.27
+                    securityContext:
+                      privileged: false
+          ---
+          apiVersion: batch/v1
+          kind: CronJob
+          metadata:
+            name: secure-cronjob
+            labels:
+              owner: platform
+            namespace: default
+          spec:
+            schedule: "*/5 * * * *"
+            jobTemplate:
+              spec:
+                template:
+                  metadata:
+                    labels:
+                      owner: platform
+                  spec:
+                    restartPolicy: Never
+                    containers:
+                      - name: app
+                        image: nginx:1.27
+                        securityContext:
+                          privileged: false
           EOF
 
-      - name: Test Kyverno policies against Pod
+      - name: Test Kyverno policies against all resources
         run: |
-          kyverno apply security/policies.yaml --resource security/pod.yaml
+          kyverno apply security/policies.yaml --resource security/resources.yaml
 
       - name: Sign and verify attestation with Cosign
         env:
