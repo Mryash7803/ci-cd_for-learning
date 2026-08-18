@@ -1,243 +1,329 @@
-name: Kyverno and Cosign Security Checks
+#!/usr/bin/env bash
+set -euo pipefail
 
-on:
-  push:
-  pull_request:
+# 1. Create clean workspace
+mkdir -p security-suite
+cd security-suite
 
-permissions:
-  contents: read
-  id-token: write # Required for Cosign keyless signing via OIDC
-
-jobs:
-  policy-and-signature-checks:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Kyverno CLI
-        uses: kyverno/action-install-cli@v0.2.0
-
-      - name: Install Cosign
-        uses: sigstore/cosign-installer@v3.7.0
-
-      - name: Create Kyverno policies and test resources
-        shell: bash
-        run: |
-          mkdir -p security
-          cat > security/policies.yaml <<'EOF'
-          apiVersion: kyverno.io/v1
-          kind: ClusterPolicy
-          metadata:
-            name: disallow-privileged
-          spec:
-            validationFailureAction: Enforce
-            rules:
-              - name: privileged-containers
-                match:
-                  any:
-                    - resources:
-                        kinds: [Pod]
-                validate:
-                  message: "Privileged containers are not allowed."
-                  pattern:
-                    spec:
-                      containers:
-                        - =(securityContext):
-                            =(privileged): false
-          ---
-          apiVersion: kyverno.io/v1
-          kind: ClusterPolicy
-          metadata:
-            name: require-owner-label
-          spec:
-            validationFailureAction: Enforce
-            rules:
-              - name: owner-label
-                match:
-                  any:
-                    - resources:
-                        kinds: [Pod]
-                validate:
-                  message: "The owner label is required."
-                  pattern:
-                    metadata:
-                      labels:
-                        owner: "?*"
-          ---
-          apiVersion: kyverno.io/v1
-          kind: ClusterPolicy
-          metadata:
-            name: disallow-image-latest
-          spec:
-            validationFailureAction: Enforce
-            rules:
-              - name: image-tag
-                match:
-                  any:
-                    - resources:
-                        kinds: [Pod]
-                validate:
-                  message: "Images must not use the latest tag."
-                  foreach:
-                    - list: "request.object.spec.containers[]"
-                      pattern:
-                        image: "!*:latest"
-          EOF
-
-          cat > security/resources.yaml <<'EOF'
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            name: secure-pod
-            labels:
-              owner: platform
-            namespace: default
+# 2. Create the 3 Kyverno policies
+cat > policies.yaml <<'EOF'
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privileged
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: privileged-containers
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        message: "Privileged containers are not allowed."
+        pattern:
           spec:
             containers:
-              - name: app
-                image: nginx:1.27
-                securityContext:
-                  privileged: false
-          ---
-          apiVersion: apps/v1
-          kind: Deployment
+              - =(securityContext):
+                  =(privileged): false
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-owner-label
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: owner-label
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        message: "The owner label is required."
+        pattern:
           metadata:
-            name: secure-deployment
             labels:
-              owner: platform
-            namespace: default
-          spec:
-            replicas: 1
-            selector:
-              matchLabels:
-                app: secure-deploy
-              labels:
-                owner: platform
-            template:
-              metadata:
-                labels:
-                  app: secure-deploy
-                  owner: platform
-              spec:
-                containers:
-                  - name: app
-                    image: nginx:1.27
-                    securityContext:
-                      privileged: false
-          ---
-          apiVersion: apps/v1
-          kind: StatefulSet
-          metadata:
-            name: secure-statefulset
-            labels:
-              owner: platform
-            namespace: default
-          spec:
-            serviceName: "secure-service"
-            replicas: 1
-            selector:
-              matchLabels:
-                app: secure-sts
-              labels:
-                owner: platform
-            template:
-              metadata:
-                labels:
-                  app: secure-sts
-                  owner: platform
-              spec:
-                containers:
-                  - name: app
-                    image: nginx:1.27
-                    securityContext:
-                      privileged: false
-          ---
-          apiVersion: apps/v1
-          kind: DaemonSet
-          metadata:
-            name: secure-daemonset
-            labels:
-              owner: platform
-            namespace: default
-          spec:
-            selector:
-              matchLabels:
-                app: secure-ds
-              labels:
-                owner: platform
-            template:
-              metadata:
-                labels:
-                  app: secure-ds
-                  owner: platform
-              spec:
-                containers:
-                  - name: app
-                    image: nginx:1.27
-                    securityContext:
-                      privileged: false
-          ---
-          apiVersion: batch/v1
-          kind: Job
-          metadata:
-            name: secure-job
-            labels:
-              owner: platform
-            namespace: default
-          spec:
-            template:
-              metadata:
-                labels:
-                  owner: platform
-              spec:
-                restartPolicy: Never
-                containers:
-                  - name: app
-                    image: nginx:1.27
-                    securityContext:
-                      privileged: false
-          ---
-          apiVersion: batch/v1
-          kind: CronJob
-          metadata:
-            name: secure-cronjob
-            labels:
-              owner: platform
-            namespace: default
-          spec:
-            schedule: "*/5 * * * *"
-            jobTemplate:
-              spec:
-                template:
-                  metadata:
-                    labels:
-                      owner: platform
-                  spec:
-                    restartPolicy: Never
-                    containers:
-                      - name: app
-                        image: nginx:1.27
-                        securityContext:
-                          privileged: false
-          EOF
+              owner: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-image-latest
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: image-tag
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        message: "Images must not use the latest tag."
+        foreach:
+          - list: "request.object.spec.containers[]"
+            pattern:
+              image: "!*:latest"
+EOF
 
-      - name: Test Kyverno policies against all resources
-        run: |
-          kyverno apply security/policies.yaml --resource security/resources.yaml
+# 3. Create all 6 compliant Kubernetes resources
+cat > resources.yaml <<'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: secure-pod
+  labels:
+    owner: platform
+spec:
+  containers:
+    - name: app
+      image: nginx:1.27
+      securityContext:
+        privileged: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secure-deployment
+  labels:
+    owner: platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: secure-deploy
+  template:
+    metadata:
+      labels:
+        app: secure-deploy
+        owner: platform
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.27
+          securityContext:
+            privileged: false
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: secure-statefulset
+  labels:
+    owner: platform
+spec:
+  serviceName: "secure-service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: secure-sts
+  template:
+    metadata:
+      labels:
+        app: secure-sts
+        owner: platform
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.27
+          securityContext:
+            privileged: false
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: secure-daemonset
+  labels:
+    owner: platform
+spec:
+  selector:
+    matchLabels:
+      app: secure-ds
+  template:
+    metadata:
+      labels:
+        app: secure-ds
+        owner: platform
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.27
+          securityContext:
+            privileged: false
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: secure-job
+  labels:
+    owner: platform
+spec:
+  template:
+    metadata:
+      labels:
+        owner: platform
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: app
+          image: nginx:1.27
+          securityContext:
+            privileged: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: secure-cronjob
+  labels:
+    owner: platform
+spec:
+  schedule: "*/5 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            owner: platform
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: app
+              image: nginx:1.27
+              securityContext:
+                privileged: false
+EOF
 
-      - name: Sign and verify attestation with Cosign
-        env:
-          COSIGN_YES: "true"
-        run: |
-          printf 'Kyverno policy checks passed for commit %s\n' "$GITHUB_SHA" > security-result.txt
+# 4. Create the Kyverno Test Suite definition
+cat > kyverno-test.yaml <<'EOF'
+name: security-test-suite
+policies:
+  - policies.yaml
+resources:
+  - resources.yaml
+results:
+  # Pod validations
+  - policy: disallow-privileged
+    rule: privileged-containers
+    resource: secure-pod
+    kind: Pod
+    result: pass
+  - policy: require-owner-label
+    rule: owner-label
+    resource: secure-pod
+    kind: Pod
+    result: pass
+  - policy: disallow-image-latest
+    rule: image-tag
+    resource: secure-pod
+    kind: Pod
+    result: pass
 
-          # Sign the result blob generating a Sigstore bundle
-          cosign sign-blob --yes --bundle security-result.bundle security-result.txt
+  # Deployment validations (autogen rules)
+  - policy: disallow-privileged
+    rule: autogen-privileged-containers
+    resource: secure-deployment
+    kind: Deployment
+    result: pass
+  - policy: require-owner-label
+    rule: autogen-owner-label
+    resource: secure-deployment
+    kind: Deployment
+    result: pass
+  - policy: disallow-image-latest
+    rule: autogen-image-tag
+    resource: secure-deployment
+    kind: Deployment
+    result: pass
 
-          # Verify the bundle against the GitHub OIDC identity
-          cosign verify-blob \
-            --bundle security-result.bundle \
-            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/" \
-            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-            security-result.txt
+  # StatefulSet validations (autogen rules)
+  - policy: disallow-privileged
+    rule: autogen-privileged-containers
+    resource: secure-statefulset
+    kind: StatefulSet
+    result: pass
+  - policy: require-owner-label
+    rule: autogen-owner-label
+    resource: secure-statefulset
+    kind: StatefulSet
+    result: pass
+  - policy: disallow-image-latest
+    rule: autogen-image-tag
+    resource: secure-statefulset
+    kind: StatefulSet
+    result: pass
+
+  # DaemonSet validations (autogen rules)
+  - policy: disallow-privileged
+    rule: autogen-privileged-containers
+    resource: secure-daemonset
+    kind: DaemonSet
+    result: pass
+  - policy: require-owner-label
+    rule: autogen-owner-label
+    resource: secure-daemonset
+    kind: DaemonSet
+    result: pass
+  - policy: disallow-image-latest
+    rule: autogen-image-tag
+    resource: secure-daemonset
+    kind: DaemonSet
+    result: pass
+
+  # Job validations (autogen rules)
+  - policy: disallow-privileged
+    rule: autogen-privileged-containers
+    resource: secure-job
+    kind: Job
+    result: pass
+  - policy: require-owner-label
+    rule: autogen-owner-label
+    resource: secure-job
+    kind: Job
+    result: pass
+  - policy: disallow-image-latest
+    rule: autogen-image-tag
+    resource: secure-job
+    kind: Job
+    result: pass
+
+  # CronJob validations (autogen rules)
+  - policy: disallow-privileged
+    rule: autogen-cronjob-privileged-containers
+    resource: secure-cronjob
+    kind: CronJob
+    result: pass
+  - policy: require-owner-label
+    rule: autogen-cronjob-owner-label
+    resource: secure-cronjob
+    kind: CronJob
+    result: pass
+  - policy: disallow-image-latest
+    rule: autogen-cronjob-image-tag
+    resource: secure-cronjob
+    kind: CronJob
+    result: pass
+EOF
+
+# 5. Execute test suite
+echo "=== Running Kyverno Test Suite ==="
+kyverno test .
+
+# 6. Generate and verify Cosign attestation
+echo "=== Signing and Verifying with Cosign ==="
+printf 'All 6 workloads passed all Kyverno policies on commit %s\n' "${GITHUB_SHA:-local-test}" > security-result.txt
+
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+  # Keyless OIDC mode in GitHub Actions
+  cosign sign-blob --yes --bundle security-result.bundle security-result.txt
+  cosign verify-blob \
+    --bundle security-result.bundle \
+    --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/" \
+    --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+    security-result.txt
+else
+  # Local mode using a local key pair
+  cosign generate-key-pair
+  cosign sign-blob --yes --key cosign.key --bundle security-result.bundle security-result.txt
+  cosign verify-blob --key cosign.pub --bundle security-result.bundle security-result.txt
+fi
+
+echo "=== All checks completed successfully ==="
